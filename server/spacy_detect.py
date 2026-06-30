@@ -9,6 +9,18 @@ import sys
 import json
 import spacy
 
+
+def sanitize_text(text):
+    if text is None:
+        return ""
+    if not isinstance(text, str):
+        text = str(text)
+
+    text = text.replace("\x00", " ")
+    text = text.encode("utf-8", "surrogatepass").decode("utf-8", "ignore")
+    return text
+
+
 # Map spaCy's entity labels to this app's PII types
 LABEL_MAP = {
     "PERSON": "NAME",
@@ -28,10 +40,23 @@ def estimate_confidence(ent):
     return 0.6
 
 def main():
-    text = sys.stdin.read()
+    text = sanitize_text(sys.stdin.read())
 
-    nlp = spacy.load("en_core_web_sm")
-    doc = nlp(text)
+    if not text.strip():
+        print(json.dumps([]))
+        return
+
+    try:
+        nlp = spacy.load("en_core_web_sm")
+    except OSError:
+        print(json.dumps([]))
+        return
+
+    try:
+        doc = nlp(text)
+    except Exception:
+        print(json.dumps([]))
+        return
 
     spans = []
     seen = set()

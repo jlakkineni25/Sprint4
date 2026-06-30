@@ -1,5 +1,12 @@
 const express = require('express');
+const fs = require('fs');
+const path = require('path');
+const { spawnSync } = require('child_process');
+const multer = require('multer');
 const router = express.Router();
+
+const upload = multer({ storage: multer.memoryStorage() });
+const uploadSingle = upload.single('file');
 
 const getAction = (span) => {
   if (span.action) return span.action;
@@ -21,9 +28,23 @@ const getReplacement = (span, action) => {
   return '█'.repeat(span.text.length);
 };
 
-router.post('/', (req, res) => {
-  const { document, spans = [] } = req.body;
+const resolvePython = () => {
+  const candidates = [process.env.PYTHON, 'python3', 'python'];
+  for (const candidate of candidates) {
+    if (!candidate) continue;
+    const result = spawnSync(candidate, ['-c', 'import sys; print(sys.executable)'], { encoding: 'utf-8' });
+    if (result.status === 0) return candidate;
+  }
+  throw new Error('Python interpreter not found');
+};
 
+const ensureExportDir = () => {
+  const exportDir = path.join(__dirname, '..', 'exports');
+  fs.mkdirSync(exportDir, { recursive: true });
+  return exportDir;
+};
+
+const createTextRedaction = (document, spans) => {
   const selectedSpans = spans
     .map((span) => ({ ...span, action: getAction(span) }))
     .filter((span) => span.action !== 'keep-visible')
@@ -42,8 +63,55 @@ router.post('/', (req, res) => {
   }
 
   output += document.slice(cursor);
+  return output;
+};
 
-  res.json({ redacted: output });
+router.post('/', uploadSingle, (req, res) => {
+  try {
+    const document = req.body.document || '';
+    const spans = typeof req.body.spans === 'string' ? JSON.parse(req.body.spans) : (req.body.spans || []);
+    const file = req.file;
+
+    const isPdf = Boolean(file && (file.originalname?.toLowerCase().endsWith('.pdf') || file.mimetype === 'application/pdf'));
+
+    if (isPdf) {
+      const exportDir = ensureExportDir();
+      const inputPath = path.join(exportDir, `${Date.now()}-source.pdf`);
+      const outputPath = path.join(exportDir, `${Date.now()}-redacted.pdf`);
+      fs.writeFileSync(inputPath, file.buffer);
+
+      const pythonCommand = resolvePython();
+      const scriptPath = path.join(__dirname, '..', 'pdf_redactor.py');
+      const spansPath = path.join(exportDir, `${Date.now()}-spans.json`);
+      fs.writeFileSync(spansPath, JSON.stringify(spans.map((span) => ({ ...span, action: getAction(span) }))));
+      const result = spawnSync(pythonCommand, [scriptPath, inputPath, outputPath, spansPath], {
+        encoding: 'utf-8',
+        timeout: 60000,
+      });
+
+      if (result.status !== 0) {
+        fs.unlinkSync(inputPath);
+        fs.unlinkSync(spansPath);
+        throw new Error(result.stderr || result.stdout || 'PDF redaction failed');
+      }
+
+      const pdfBuffer = fs.readFileSync(outputPath);
+      res.setHeader('Content-Type', 'application/pdf');
+      res.setHeader('Content-Disposition', `attachment; filename="${path.basename(outputPath)}"`);
+      res.send(pdfBuffer);
+
+      fs.unlinkSync(inputPath);
+      fs.unlinkSync(outputPath);
+      fs.unlinkSync(spansPath);
+      return;
+    }
+
+    const redacted = createTextRedaction(document, spans);
+    res.json({ redacted });
+  } catch (err) {
+    console.error('Export failed:', err);
+    res.status(500).json({ error: 'Failed to export document', details: err.message });
+  }
 });
 
 module.exports = router;

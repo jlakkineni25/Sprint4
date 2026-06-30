@@ -93,9 +93,13 @@ export default function DocumentViewer({ docText, spans, onUpdate, onAddMissed, 
 
   return (
     <div className="relative">
+      <div className="mb-3 flex items-center justify-between">
+        <h2 className="text-sm font-semibold text-gray-200">Document preview</h2>
+        <span className="rounded-full border border-gray-700 bg-gray-800/70 px-2.5 py-1 text-[11px] text-gray-400">review mode</span>
+      </div>
       <div
         onMouseUp={handleMouseUp}
-        className="bg-gray-900 border border-gray-700 rounded-xl p-6 leading-8 text-gray-100 font-mono text-sm whitespace-pre-wrap select-text"
+        className="rounded-2xl border border-white/10 bg-gradient-to-br from-gray-900 via-gray-900 to-gray-950 p-6 leading-8 text-sm font-mono whitespace-pre-wrap text-gray-100 shadow-2xl shadow-black/30 select-text"
       >
         {segments.map((seg, i) => {
           if (seg.type === "text") return <span key={i}>{seg.content}</span>;
@@ -132,20 +136,20 @@ export default function DocumentViewer({ docText, spans, onUpdate, onAddMissed, 
       </div>
 
       {selectionPrompt && (
-        <div className="mt-3 bg-gray-800 border border-orange-500 rounded-lg p-3 flex items-center justify-between">
+        <div className="mt-3 flex items-center justify-between rounded-2xl border border-orange-500/30 bg-orange-500/10 p-3">
           <span className="text-sm text-orange-300">
             Tag <strong>"{selectionPrompt}"</strong> as missed PII?
           </span>
-          <div className="flex gap-2 ml-4">
+          <div className="ml-4 flex gap-2">
             <button
               onClick={() => { onAddMissed(selectionPrompt); setSelectionPrompt(null); }}
-              className="bg-orange-500 hover:bg-orange-600 text-white text-xs px-3 py-1 rounded"
+              className="rounded-lg bg-orange-500 px-3 py-1 text-xs text-white transition hover:bg-orange-600"
             >
               Tag as PII
             </button>
             <button
               onClick={() => setSelectionPrompt(null)}
-              className="bg-gray-600 hover:bg-gray-500 text-white text-xs px-3 py-1 rounded"
+              className="rounded-lg bg-gray-700 px-3 py-1 text-xs text-white transition hover:bg-gray-600"
             >
               Cancel
             </button>

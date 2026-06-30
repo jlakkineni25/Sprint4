@@ -5,7 +5,8 @@ const { spawnSync } = require('child_process');
 const path = require('path');
 const pdf = require('pdf-parse');
 const mammoth = require('mammoth');
-const fileType = require('file-type');
+const FileType = require('file-type');
+const fs = require('fs');
 
 const upload = multer({ storage: multer.memoryStorage() });
 const uploadMultiple = upload.array('files', 20); // field name "files", max 20 at once
@@ -39,12 +40,8 @@ function detectStructuredPII(text) {
   return spans;
 }
 
-// Soft PII — names, orgs, locations, dates — handled by spaCy via a Python subprocess.
-// Falls back silently (returns []) if Python/spaCy isn't available, so the app
-// still works end-to-end with regex-only detection on a machine without Python set up.
 function detectSoftPII(text) {
   const scriptPath = path.join(__dirname, '..', 'spacy_detect.py');
-  // Try python3 first (Mac/Linux convention), then python (common on Windows).
   const candidates = ['python3', 'python'];
 
   for (const command of candidates) {
@@ -56,7 +53,7 @@ function detectSoftPII(text) {
       });
 
       if (result.error) {
-        if (result.error.code === 'ENOENT') continue; // this command doesn't exist, try next
+        if (result.error.code === 'ENOENT') continue;
         console.warn(`spaCy detection error via "${command}":`, result.error.message);
         return [];
       }
@@ -79,10 +76,32 @@ function detectSoftPII(text) {
 
 async function extractTextFromBuffer(buffer, originalname) {
   const name = (originalname || '').toLowerCase();
-  const detected = await fileType.fromBuffer(buffer);
+  const detected = await FileType.fileTypeFromBuffer(buffer);
   const mime = detected?.mime || '';
 
   if (name.endsWith('.pdf') || mime === 'application/pdf') {
+    const tempPdfPath = path.join(__dirname, '..', 'exports', `tmp-${Date.now()}-${Math.random().toString(16).slice(2)}.pdf`);
+    fs.mkdirSync(path.dirname(tempPdfPath), { recursive: true });
+    fs.writeFileSync(tempPdfPath, buffer);
+
+    const pythonCommand = ['python3', 'python'].find((candidate) => {
+      try {
+        return spawnSync(candidate, ['-c', 'import sys; print(sys.executable)'], { encoding: 'utf-8' }).status === 0;
+      } catch {
+        return false;
+      }
+    });
+
+    if (pythonCommand) {
+      const scriptPath = path.join(__dirname, '..', 'pdf_text_extract.py');
+      const result = spawnSync(pythonCommand, [scriptPath, tempPdfPath], { encoding: 'utf-8', timeout: 60000 });
+      if (result.status === 0) {
+        fs.unlinkSync(tempPdfPath);
+        return result.stdout || '';
+      }
+    }
+
+    fs.unlinkSync(tempPdfPath);
     const data = await pdf(buffer);
     return data.text || '';
   }
@@ -99,6 +118,14 @@ async function extractTextFromBuffer(buffer, originalname) {
   return buffer.toString('utf-8');
 }
 
+function getFileKind(fileName = '', mimeType = '') {
+  const name = (fileName || '').toLowerCase();
+  if (name.endsWith('.pdf') || mimeType === 'application/pdf') return 'pdf';
+  if (name.endsWith('.docx') || mimeType === 'application/vnd.openxmlformats-officedocument.wordprocessingml.document') return 'docx';
+  if (name.endsWith('.txt') || mimeType === 'text/plain' || mimeType.startsWith('text/')) return 'text';
+  return 'text';
+}
+
 function detectPII(text, fileIndex = 0) {
   spanIdCounter = 1;
   const structured = detectStructuredPII(text);
@@ -106,7 +133,6 @@ function detectPII(text, fileIndex = 0) {
 
   const all = [...structured, ...soft].map((s) => ({ ...s, id: `f${fileIndex}-${s.id}` }));
 
-  // Mark the single lowest-confidence span as a near-miss, matching prior mock data shape
   if (all.length > 0) {
     const lowest = all.reduce((min, s) => (s.confidence < min.confidence ? s : min), all[0]);
     lowest.flaggedFalsePositive = true;
@@ -126,21 +152,23 @@ router.post('/', uploadMultiple, async (req, res) => {
         filesToProcess.push({
           filename: file.originalname,
           text,
+          mimeType: file.mimetype,
+          kind: getFileKind(file.originalname, file.mimetype),
         });
       }
     } else {
       const { sampleDocument } = require('../mock/mockPII');
-      filesToProcess = [{ filename: 'sample.txt', text: sampleDocument }];
+      filesToProcess = [{ filename: 'sample.txt', text: sampleDocument, mimeType: 'text/plain', kind: 'text' }];
     }
 
     const results = filesToProcess.map((file, idx) => ({
       filename: file.filename,
       document: file.text,
       spans: detectPII(file.text, idx),
+      mimeType: file.mimeType,
+      kind: file.kind,
     }));
 
-    // Backward-compatible shape for single-file callers: top-level document/spans
-    // mirror the first file, plus a "files" array for the new multi-file UI.
     res.json({
       files: results,
       document: results[0].document,
