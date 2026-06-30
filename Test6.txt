@@ -1,0 +1,17 @@
+Team Update
+
+Hi all,
+
+Quick note before the long weekend. The April release went out smoothly and
+no major issues were reported. Reach out to Tom if you spot anything odd in
+the logs.
+
+For anyone following up on the Atlas migration, the new endpoint goes live
+next Tuesday. Internal ticket reference OPS-2026-3309 has the full rollout
+plan if you want details.
+
+One reminder: the office building on Park Avenue will have restricted
+elevator access this Friday for maintenance.
+
+Thanks,
+Operations Team

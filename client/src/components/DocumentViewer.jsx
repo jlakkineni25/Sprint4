@@ -15,10 +15,8 @@ export default function DocumentViewer({ docText, spans, onUpdate, onAddMissed, 
     return () => window.removeEventListener("click", handler);
   }, []);
 
-  // Scroll to active span when triggered from sidebar
   useEffect(() => {
     if (activeSpanId && spanRefs.current[activeSpanId]) {
-      // Small delay so scroll + tooltip don't conflict
       setTimeout(() => {
         spanRefs.current[activeSpanId]?.scrollIntoView({
           behavior: "smooth",
@@ -31,11 +29,31 @@ export default function DocumentViewer({ docText, spans, onUpdate, onAddMissed, 
 
   const getSpanColor = (span) => {
     if (span.type === "MANUAL") return "bg-blue-400/30 text-blue-200 cursor-pointer";
+    if (span.status === "missed") return "bg-orange-500/40 text-orange-100 cursor-pointer underline decoration-wavy decoration-orange-400 font-semibold";
+    if (span.action === "keep-visible") return "bg-blue-400/30 text-blue-200 cursor-pointer";
+    if (span.action === "anonymous") return "bg-purple-400/30 text-purple-200 cursor-pointer";
     if (span.status === "confirmed") return "bg-red-400/30 text-red-200 cursor-pointer";
     if (span.status === "dismissed") return "bg-green-400/30 text-green-200 cursor-pointer";
-    if (span.status === "missed") return "bg-orange-500/40 text-orange-100 cursor-pointer underline decoration-wavy decoration-orange-400 font-semibold";
     if (span.status === "unreviewed") return "bg-yellow-400/30 text-yellow-200 cursor-pointer";
     return "bg-yellow-400/30 text-yellow-200 cursor-pointer";
+  };
+
+  const getAnonymousLabel = (span) => {
+    const type = (span.type || "").toUpperCase();
+    if (type.includes("EMAIL")) return "[REDACTED EMAIL]";
+    if (type.includes("PHONE")) return "[REDACTED PHONE]";
+    if (type.includes("NAME")) return "[REDACTED NAME]";
+    if (type.includes("LOCATION")) return "[REDACTED LOCATION]";
+    if (type.includes("DATE")) return "[REDACTED DATE]";
+    if (type.includes("CARD") || type.includes("CREDIT")) return "[REDACTED CARD]";
+    return type ? `[REDACTED ${type}]` : "[REDACTED]";
+  };
+
+  const getDisplayText = (span) => {
+    if (span.status === "confirmed" && span.action !== "keep-visible") {
+      return span.action === "anonymous" ? getAnonymousLabel(span) : "█".repeat(span.text.length);
+    }
+    return span.text;
   };
 
   const buildSegments = () => {
@@ -97,12 +115,12 @@ export default function DocumentViewer({ docText, spans, onUpdate, onAddMissed, 
                 onSpanFocus?.(span.id);
               }}
             >
-              {span.status === "confirmed" ? "█".repeat(span.text.length) : span.text}
+              {getDisplayText(span)}
               {isActive && (
                 <RedactionBadge
                   span={span}
-                  onUpdate={(id, status) => {
-                    onUpdate(id, status);
+                  onUpdate={(id, patch) => {
+                    onUpdate(id, patch);
                     setTooltip(null);
                   }}
                   onClose={() => setTooltip(null)}

@@ -1,0 +1,18 @@
+Patient Notification
+
+Dear Priya Nair,
+
+This is a reminder of your upcoming appointment with Dr. Samuel Okafor at
+Lakeside Wellness Clinic on April 9th. Please arrive 15 minutes early.
+
+For confirmation, contact our front desk at 080-2233-9981 or email
+appointments@lakesidewellness.com. Your patient file number is PT-2024-5503
+and your date of birth on record is 03/07/1988.
+
+Our clinic is located at 18 Hilltop Road, Kochi.
+
+If you need to reschedule, please notify us at least 24 hours in advance.
+
+Warm regards,
+Front Desk Team
+Lakeside Wellness Clinic
