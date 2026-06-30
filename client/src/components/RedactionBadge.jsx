@@ -5,7 +5,7 @@ export default function RedactionBadge({ span, onUpdate, onClose }) {
 
   return (
     <div
-      className="absolute z-50 top-8 left-0 w-72 bg-gray-800 border border-gray-600 rounded-xl shadow-2xl p-4 text-left"
+      className="redaction-badge absolute z-50 top-8 left-0 w-72 bg-gray-800 border border-gray-600 rounded-xl shadow-2xl p-4 text-left"
       onClick={(e) => e.stopPropagation()}
     >
       {/* Type + Confidence */}

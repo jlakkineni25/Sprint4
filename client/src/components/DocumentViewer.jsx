@@ -1,55 +1,65 @@
 import { useState, useRef, useEffect } from "react";
 import RedactionBadge from "./RedactionBadge";
 
-export default function DocumentViewer({ document, spans, onUpdate, onAddMissed }) {
-  const [tooltip, setTooltip] = useState(null); // { spanId, x, y }
+export default function DocumentViewer({ docText, spans, onUpdate, onAddMissed, activeSpanId, onSpanFocus }) {
+  const [tooltip, setTooltip] = useState(null);
   const [selectionPrompt, setSelectionPrompt] = useState(null);
-  const containerRef = useRef(null);
+  const spanRefs = useRef({});
 
   useEffect(() => {
-    const handler = () => setTooltip(null);
+    const handler = (e) => {
+      if (e.target.closest(".span-highlight") || e.target.closest(".redaction-badge")) return;
+      setTooltip(null);
+    };
     window.addEventListener("click", handler);
     return () => window.removeEventListener("click", handler);
   }, []);
 
+  // Scroll to active span when triggered from sidebar
+  useEffect(() => {
+    if (activeSpanId && spanRefs.current[activeSpanId]) {
+      // Small delay so scroll + tooltip don't conflict
+      setTimeout(() => {
+        spanRefs.current[activeSpanId]?.scrollIntoView({
+          behavior: "smooth",
+          block: "center",
+        });
+        setTooltip({ spanId: activeSpanId });
+      }, 50);
+    }
+  }, [activeSpanId]);
+
   const getSpanColor = (span) => {
-  if (span.type === "MANUAL") return "bg-blue-400/30 text-blue-200 cursor-pointer";
-  if (span.status === "confirmed") return "bg-red-400/30 text-red-200 cursor-pointer";
-  if (span.status === "dismissed") return "bg-green-400/30 text-green-200 cursor-pointer";
-  if (span.status === "missed") return "bg-orange-400/30 text-orange-200 cursor-pointer underline decoration-dotted";
-  if (span.status === "unreviewed") return "bg-yellow-400/30 text-yellow-200 cursor-pointer";
-  return "bg-yellow-400/30 text-yellow-200 cursor-pointer";
-};
+    if (span.type === "MANUAL") return "bg-blue-400/30 text-blue-200 cursor-pointer";
+    if (span.status === "confirmed") return "bg-red-400/30 text-red-200 cursor-pointer";
+    if (span.status === "dismissed") return "bg-green-400/30 text-green-200 cursor-pointer";
+    if (span.status === "missed") return "bg-orange-500/40 text-orange-100 cursor-pointer underline decoration-wavy decoration-orange-400 font-semibold";
+    if (span.status === "unreviewed") return "bg-yellow-400/30 text-yellow-200 cursor-pointer";
+    return "bg-yellow-400/30 text-yellow-200 cursor-pointer";
+  };
 
   const buildSegments = () => {
-    let text = document;
-    const allSpans = [...spans];
     const positions = [];
-
-    for (const span of allSpans) {
-      const idx = text.indexOf(span.text);
+    for (const span of spans) {
+      const idx = docText.indexOf(span.text);
       if (idx !== -1) {
         positions.push({ start: idx, end: idx + span.text.length, span });
       }
     }
-
     positions.sort((a, b) => a.start - b.start);
 
     const segments = [];
     let cursor = 0;
-
     for (const pos of positions) {
       if (pos.start > cursor) {
-        segments.push({ type: "text", content: text.slice(cursor, pos.start) });
+        segments.push({ type: "text", content: docText.slice(cursor, pos.start) });
       }
       segments.push({ type: "span", span: pos.span });
       cursor = pos.end;
     }
-
-    if (cursor < text.length) {
-      segments.push({ type: "text", content: text.slice(cursor) });
+    if (cursor < docText.length) {
+      segments.push({ type: "text", content: docText.slice(cursor) });
     }
-
     return segments;
   };
 
@@ -66,7 +76,6 @@ export default function DocumentViewer({ document, spans, onUpdate, onAddMissed 
   return (
     <div className="relative">
       <div
-        ref={containerRef}
         onMouseUp={handleMouseUp}
         className="bg-gray-900 border border-gray-700 rounded-xl p-6 leading-8 text-gray-100 font-mono text-sm whitespace-pre-wrap select-text"
       >
@@ -79,23 +88,31 @@ export default function DocumentViewer({ document, spans, onUpdate, onAddMissed 
           return (
             <span
               key={i}
-              className={`relative rounded px-0.5 ${getSpanColor(span)} ${isActive ? "ring-2 ring-white" : ""}`}
+              ref={(el) => (spanRefs.current[span.id] = el)}
+              className={`span-highlight relative rounded px-0.5 ${getSpanColor(span)} ${isActive ? "ring-2 ring-white" : ""}`}
               onClick={(e) => {
                 e.stopPropagation();
                 setTooltip(isActive ? null : { spanId: span.id });
                 setSelectionPrompt(null);
+                onSpanFocus?.(span.id);
               }}
             >
               {span.status === "confirmed" ? "█".repeat(span.text.length) : span.text}
               {isActive && (
-                <RedactionBadge span={span} onUpdate={onUpdate} onClose={() => setTooltip(null)} />
+                <RedactionBadge
+                  span={span}
+                  onUpdate={(id, status) => {
+                    onUpdate(id, status);
+                    setTooltip(null);
+                  }}
+                  onClose={() => setTooltip(null)}
+                />
               )}
             </span>
           );
         })}
       </div>
 
-      {/* Manual tag prompt */}
       {selectionPrompt && (
         <div className="mt-3 bg-gray-800 border border-orange-500 rounded-lg p-3 flex items-center justify-between">
           <span className="text-sm text-orange-300">
